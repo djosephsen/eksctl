@@ -15,6 +15,7 @@ import (
 var listAllRegions bool
 
 func getClusterCmd() *cobra.Command {
+	p := &api.ProviderConfig{}
 	cfg := api.NewClusterConfig()
 
 	cmd := &cobra.Command{
@@ -22,7 +23,7 @@ func getClusterCmd() *cobra.Command {
 		Short:   "Get cluster(s)",
 		Aliases: []string{"clusters"},
 		Run: func(_ *cobra.Command, args []string) {
-			if err := doGetCluster(cfg, ctl.GetNameArg(args)); err != nil {
+			if err := doGetCluster(p, cfg, ctl.GetNameArg(args)); err != nil {
 				logger.Critical("%s\n", err.Error())
 				os.Exit(1)
 			}
@@ -31,38 +32,39 @@ func getClusterCmd() *cobra.Command {
 
 	fs := cmd.Flags()
 
-	fs.StringVarP(&cfg.ClusterName, "name", "n", "", "EKS cluster name")
+	fs.StringVarP(&cfg.ID.Name, "name", "n", "", "EKS cluster name")
 	fs.BoolVarP(&listAllRegions, "all-regions", "A", false, "List clusters across all supported regions")
 	fs.IntVar(&chunkSize, "chunk-size", defaultChunkSize, "Return large lists in chunks rather than all at once. Pass 0 to disable.")
 
-	fs.StringVarP(&cfg.Region, "region", "r", "", "AWS region")
-	fs.StringVarP(&cfg.Profile, "profile", "p", "", "AWS credentials profile to use (overrides the AWS_PROFILE environment variable)")
+	fs.StringVarP(&p.Region, "region", "r", "", "AWS region")
+	fs.StringVarP(&p.Profile, "profile", "p", "", "AWS credentials profile to use (overrides the AWS_PROFILE environment variable)")
 
 	fs.StringVarP(&output, "output", "o", "table", "Specifies the output format. Choose from table,json,yaml. Defaults to table.")
+
 	return cmd
 }
 
-func doGetCluster(cfg *api.ClusterConfig, name string) error {
-	regionGiven := cfg.Region != "" // eks.New resets this field, so we need to check if it was set in the fist place
-	ctl := eks.New(cfg)
+func doGetCluster(p *api.ProviderConfig, cfg *api.ClusterConfig, name string) error {
+	regionGiven := cfg.ID.Region != "" // eks.New resets this field, so we need to check if it was set in the fist place
+	ctl := eks.New(p, cfg)
 
-	if !cfg.IsSupportedRegion() {
-		return fmt.Errorf("--region=%s is not supported - use one of: %s", cfg.Region, strings.Join(api.SupportedRegions(), ", "))
+	if !ctl.IsSupportedRegion() {
+		return fmt.Errorf("--region=%s is not supported - use one of: %s", cfg.ID.Region, strings.Join(api.SupportedRegions(), ", "))
 	}
 
 	if regionGiven && listAllRegions {
-		logger.Warning("--region=%s is ignored, as --all-regions is given", cfg.Region)
+		logger.Warning("--region=%s is ignored, as --all-regions is given", cfg.ID.Region)
 	}
 
-	if cfg.ClusterName != "" && name != "" {
-		return fmt.Errorf("--name=%s and argument %s cannot be used at the same time", cfg.ClusterName, name)
+	if cfg.ID.Name != "" && name != "" {
+		return fmt.Errorf("--name=%s and argument %s cannot be used at the same time", cfg.ID.Name, name)
 	}
 
 	if name != "" {
-		cfg.ClusterName = name
+		cfg.ID.Name = name
 	}
 
-	if cfg.ClusterName != "" && listAllRegions {
+	if cfg.ID.Name != "" && listAllRegions {
 		return fmt.Errorf("--all-regions is for listing all clusters, it must be used without cluster name flag/argument")
 	}
 
@@ -70,5 +72,5 @@ func doGetCluster(cfg *api.ClusterConfig, name string) error {
 		return err
 	}
 
-	return ctl.ListClusters(chunkSize, output, listAllRegions)
+	return ctl.ListClusters(cfg.ID.Name, chunkSize, output, listAllRegions)
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/cloudformation/cloudformationiface"
@@ -41,22 +42,44 @@ var DefaultWaitTimeout = 20 * time.Minute
 // DefaultNodeCount defines the default number of nodes to be created
 const DefaultNodeCount = 2
 
+// ClusterLocator is what identifies the cluster
+type ClusterLocator struct {
+	Name   string
+	Region string
+}
+
+// String returns canonical representation of ClusterLocator
+func (c *ClusterLocator) String() string {
+	return fmt.Sprintf("%s.%s.eksctl.io", c.Name, c.Region)
+}
+
+// LogString returns representation of ClusterLocator for logs
+func (c *ClusterLocator) LogString() string {
+	return fmt.Sprintf("EKS cluster %q in %q region", c.Name, c.Region)
+}
+
 // ClusterProvider provides an interface with the needed AWS APIs
 type ClusterProvider interface {
 	CloudFormation() cloudformationiface.CloudFormationAPI
 	EKS() eksiface.EKSAPI
 	EC2() ec2iface.EC2API
 	STS() stsiface.STSAPI
+	Region() string
+	Profile() string
+	WaitTimeout() time.Duration
+}
+
+type ProviderConfig struct {
+	Region      string
+	Profile     string
+	WaitTimeout time.Duration
 }
 
 // ClusterConfig is a simple config, to be replaced with Cluster API
 type ClusterConfig struct {
-	Region      string
-	Profile     string
-	Tags        map[string]string
-	ClusterName string
+	ID *ClusterLocator
 
-	WaitTimeout time.Duration
+	Tags map[string]string
 
 	VPC *ClusterVPC
 
@@ -78,6 +101,7 @@ type ClusterConfig struct {
 // call NewNodeGroup to create one
 func NewClusterConfig() *ClusterConfig {
 	cfg := &ClusterConfig{
+		ID:  &ClusterLocator{},
 		VPC: &ClusterVPC{},
 	}
 
@@ -95,16 +119,6 @@ func (c *ClusterConfig) AppendAvailabilityZone(newAZ string) {
 		}
 	}
 	c.AvailabilityZones = append(c.AvailabilityZones, newAZ)
-}
-
-// IsSupportedRegion check if given region is supported
-func (c *ClusterConfig) IsSupportedRegion() bool {
-	for _, supportedRegion := range SupportedRegions() {
-		if c.Region == supportedRegion {
-			return true
-		}
-	}
-	return false
 }
 
 // NewNodeGroup crears new nodegroup inside cluster config,
